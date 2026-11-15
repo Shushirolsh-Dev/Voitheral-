@@ -1,211 +1,46 @@
 "use client";
-
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Bell, Check, ChevronRight, Clock3, Heart, Mic, MicOff, Moon, Plus, Settings2, Sparkles, Sun, Volume2, VolumeX, Waves } from "lucide-react";
-
-type Routine = { id: string; title: string; time: string; done: boolean; category: string };
-type SpeechRecognitionResultLike = { 0: { transcript: string }; isFinal: boolean };
-type SpeechRecognitionEventLike = { results: ArrayLike<SpeechRecognitionResultLike> };
-type Recognition = { lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: SpeechRecognitionEventLike) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
-type RecognitionWindow = Window & { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
-
-const starter: Routine[] = [
-  { id: "r1", title: "Brush your teeth", time: "7:00 AM", done: false, category: "Self care" },
-  { id: "r2", title: "Have a glass of water", time: "7:10 AM", done: false, category: "Wellness" },
-  { id: "r3", title: "Take a proper bath", time: "7:30 AM", done: false, category: "Self care" },
-  { id: "r4", title: "Eat breakfast", time: "8:00 AM", done: false, category: "Nutrition" }
-];
-
-export default function Home() {
-  const [routines, setRoutines] = useState<Routine[]>(starter);
-  const [listening, setListening] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [reply, setReply] = useState("Good morning. I'm glad you're here. Take a breath — we'll make today a little easier, one step at a time.");
-  const [heard, setHeard] = useState("");
-  const [mode, setMode] = useState<"demo" | "connected">("demo");
-  const [now, setNow] = useState(new Date());
-  const [notice, setNotice] = useState("");
-  const [remindersEnabled, setRemindersEnabled] = useState(false);
-  const recognitionRef = useRef<Recognition | null>(null);
-  const historyRef = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
-  const timerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("voithreal-routines");
-    if (saved) { try { setRoutines(JSON.parse(saved)); } catch { /* ignore invalid local state */ } }
-    const tick = window.setInterval(() => setNow(new Date()), 30000);
-    return () => window.clearInterval(tick);
-  }, []);
-
-  useEffect(() => { localStorage.setItem("voithreal-routines", JSON.stringify(routines)); }, [routines]);
-
-  const doneCount = routines.filter((r) => r.done).length;
-  const progress = routines.length ? Math.round(doneCount / routines.length * 100) : 0;
-  const greeting = useMemo(() => {
-    const h = now.getHours();
-    return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-  }, [now]);
-
-  const speak = useCallback((text: string) => {
-    if (muted || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.96;
-    utterance.pitch = 1.02;
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-  }, [muted]);
-
-  useEffect(() => { if (reply) speak(reply); }, []); // Initial greeting only.
-
-  const answer = useCallback(async (text: string) => {
-    const clean = text.trim();
-    if (!clean) return;
-    setHeard(clean);
-    setBusy(true);
-    try {
-      const context = "Today's local routine list: " + routines.map((r) => `${r.title} (${r.time}, ${r.done ? "completed" : "not completed"})`).join("; ");
-      const res = await fetch("/api/companion", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ utterance: clean, history: historyRef.current, context })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
-      setReply(data.reply);
-      setMode(data.mode);
-      historyRef.current = [...historyRef.current, { role: "user", content: clean }, { role: "assistant", content: data.reply }].slice(-8);
-      speak(data.reply);
-      const lower = clean.toLowerCase();
-      if (/i (did|have done|finished)|done with|completed/.test(lower)) {
-        setRoutines((items) => {
-          const next = items.find((r) => !r.done);
-          return next ? items.map((r) => r.id === next.id ? { ...r, done: true } : r) : items;
-        });
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "I couldn't reach my thinking service.";
-      setReply(message);
-      speak(message);
-    } finally { setBusy(false); }
-  }, [routines, speak]);
-
-  const startListening = () => {
-    const w = window as RecognitionWindow;
-    const Speech = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!Speech) { setNotice("Voice recognition isn't supported in this browser. Please open VOITHREAL in Chrome."); return; }
-    if (recognitionRef.current) recognitionRef.current.stop();
-    const rec = new Speech();
-    rec.lang = "en-NG";
-    rec.interimResults = false;
-    rec.continuous = false;
-    rec.onresult = (event) => {
-      const result = event.results[event.results.length - 1];
-      if (result?.isFinal) void answer(result[0].transcript);
-    };
-    rec.onerror = () => { setListening(false); setNotice("I couldn't hear that clearly. Tap the microphone and try again."); };
-    rec.onend = () => setListening(false);
-    recognitionRef.current = rec;
-    try { rec.start(); setListening(true); setNotice(""); } catch { setListening(false); setNotice("Microphone is busy. Try again in a moment."); }
-  };
-
-  const toggleRoutine = (id: string) => setRoutines((items) => items.map((r) => r.id === id ? { ...r, done: !r.done } : r));
-  const addRoutine = () => {
-    const title = window.prompt("What should I remind you to do?");
-    if (!title?.trim()) return;
-    const time = window.prompt("What time? (e.g. 6:30 PM)", "9:00 AM") || "Anytime";
-    setRoutines((items) => [...items, { id: crypto.randomUUID(), title: title.trim(), time, done: false, category: "Personal" }]);
-    setNotice("Added to your routine. Keep VOITHREAL open for local reminders.");
-  };
-
-  const enableReminders = async () => {
-    if (!("Notification" in window)) { setNotice("This browser does not support notifications."); return; }
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") { setNotice("Notifications are blocked. You can enable them in browser settings."); return; }
-    setRemindersEnabled(true);
-    setNotice("Notifications enabled for this browser. Reminder delivery is best-effort while the app is open.");
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    timerRef.current = window.setInterval(() => {
-      const current = new Date();
-      const label = current.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      routines.filter((r) => !r.done && r.time.toLowerCase() === label.toLowerCase()).forEach((r) => new Notification("A gentle nudge from VOITHREAL", { body: r.title }));
-    }, 30000);
-  };
-
-  return (
-    <main className="shell">
-      <aside className="rail">
-        <div className="brand-mark"><Waves size={22} strokeWidth={1.8} /></div>
-        <div className="rail-spacer" />
-        <button className="rail-button active" aria-label="Companion"><Heart size={19} /></button>
-        <button className="rail-button" aria-label="Activity"><Activity size={19} /></button>
-        <button className="rail-button" aria-label="Reminders" onClick={enableReminders}><Bell size={19} /></button>
-        <div className="rail-spacer" />
-        <button className="rail-button" aria-label="Settings" onClick={() => setNotice("Your personal data is currently stored on this device.")}><Settings2 size={19} /></button>
-        <div className="avatar">V</div>
-      </aside>
-
-      <section className="workspace">
-        <header className="topbar">
-          <div className="wordmark"><span className="wordmark-icon"><Waves size={17} /></span> VOITHREAL <span className="beta">EARLY ACCESS</span></div>
-          <div className="top-actions">
-            <span className="connection"><i /> {mode === "connected" ? "Intelligence connected" : "Local companion mode"}</span>
-            <button className="icon-button" onClick={enableReminders} aria-label="Enable notifications"><Bell size={18} /></button>
-            <button className="icon-button" onClick={() => setMuted((m) => !m)} aria-label="Toggle voice"><Volume2 size={18} />{muted && <span className="slash" />}</button>
-          </div>
-        </header>
-
-        <div className="content-grid">
-          <section className="main-column">
-            <div className="welcome-row">
-              <div><p className="eyebrow">{now.toLocaleDateString("en-NG", { weekday: "long", month: "long", day: "numeric" })}</p><h1>{greeting}<span className="period">.</span></h1><p className="subheading">Let's take today one step at a time.</p></div>
-              <div className="weather-chip"><Sun size={16} /> <span>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span></div>
-            </div>
-
-            <section className="companion-card">
-              <div className="card-glow" />
-              <div className="companion-head"><div className="online-label"><span className="pulse-dot" /> YOUR COMPANION</div><span className="session-tag">SESSION 01</span></div>
-              <div className={`orb-wrap ${listening ? "is-listening" : ""} ${speaking ? "is-speaking" : ""} ${busy ? "is-thinking" : ""}`}>
-                <div className="orb-ring ring-one" /><div className="orb-ring ring-two" /><div className="orb-core"><div className="orb-shine" /><Waves size={35} strokeWidth={1.4} /></div>
-              </div>
-              <div className="voice-status">{listening ? "I'm listening..." : busy ? "Let me think..." : speaking ? "Speaking with you" : "Here whenever you need me"}</div>
-              <p className="companion-reply">{reply}</p>
-              {heard && <p className="heard-line">YOU SAID · “{heard}”</p>}
-              <div className="voice-controls">
-                <button className={`mic-button ${listening ? "recording" : ""}`} onClick={listening ? () => recognitionRef.current?.stop() : startListening} disabled={busy} aria-label={listening ? "Stop listening" : "Start speaking"}>
-                  {listening ? <MicOff size={23} /> : <Mic size={23} />}
-                </button>
-                <span>{listening ? "TAP TO STOP" : "TAP TO TALK"}</span>
-                <button className="replay-button" onClick={() => speak(reply)} aria-label="Repeat response"><Volume2 size={17} /></button>
-              </div>
-              <p className="privacy-note"><Heart size={12} /> Your conversations stay in this session. Your routine is saved on this device.</p>
-            </section>
-
-            {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>Dismiss</button></div>}
-
-            <section className="routine-section">
-              <div className="section-heading"><div><p className="eyebrow">A LITTLE STRUCTURE</p><h2>Your daily rhythm</h2></div><button className="text-button" onClick={addRoutine}><Plus size={15} /> Add routine</button></div>
-              <div className="progress-card"><div className="progress-copy"><span>Today's progress</span><strong>{doneCount}<small> / {routines.length} completed</small></strong></div><div className="progress-track"><div className="progress-fill" style={{ width: progress + "%" }} /></div><span className="progress-percent">{progress}%</span></div>
-              <div className="routine-list">
-                {routines.map((r) => <button className={`routine-item ${r.done ? "completed" : ""}`} key={r.id} onClick={() => toggleRoutine(r.id)}>
-                  <span className="check-circle">{r.done && <Check size={14} />}</span><span className="routine-info"><strong>{r.title}</strong><small>{r.category}</small></span><span className="routine-time"><Clock3 size={13} /> {r.time}</span><ChevronRight className="routine-chevron" size={16} />
-                </button>)}
-                {!routines.length && <div className="empty-state">Your day is a blank page. Add a routine to get started.</div>}
-              </div>
-            </section>
-          </section>
-
-          <aside className="side-column">
-            <section className="side-card day-card"><div className="side-card-title"><span className="mini-icon"><Sun size={16} /></span><span>Today, gently</span></div><h3>You don't have to do it all.</h3><p>Just take the next small step. Consistency grows from little things done with care.</p><div className="day-divider" /><div className="day-stat"><span>Daily rhythm</span><strong>{progress}%</strong></div><div className="mini-progress"><i style={{ width: progress + "%" }} /></div></section>
-            <section className="side-card"><div className="side-card-title"><span className="mini-icon violet"><Sparkles size={16} /></span><span>A small reminder</span></div><p className="quote">“Rest is productive. Eating is productive. Taking care of yourself is productive.”</p><span className="quote-caption">A NOTE FROM VOITHREAL</span></section>
-            <section className="side-card reminder-card"><div className="side-card-title"><span className="mini-icon green"><Bell size={16} /></span><span>Gentle reminders</span></div><p>Let your browser give you a nudge when it's time for the next thing.</p><button className="enable-button" onClick={enableReminders}>{remindersEnabled ? <Check size={15} /> : <Bell size={15} />}{remindersEnabled ? "Notifications enabled" : "Enable notifications"}</button><small>Best-effort while this app stays open.</small></section>
-            <div className="side-footer"><span>MADE WITH CARE</span><Heart size={12} fill="currentColor" /><span>VOITHREAL © 2026</span></div>
-          </aside>
-        </div>
-      </section>
-    </main>
-  );
+import {useEffect,useMemo,useRef,useState} from "react";
+import {Activity,ArrowRight,Bell,Check,ChevronDown,Clock3,Heart,Home,LogOut,Mic,MicOff,Settings,ShieldCheck,Sun,Trash2,UserRound,Volume2,VolumeX,Waves,X} from "lucide-react";
+type Task={id:string;title:string;time:string;category:string;done:boolean;date:string};
+type Rec={lang:string;interimResults:boolean;continuous:boolean;onresult:((e:any)=>void)|null;onerror:(()=>void)|null;onend:(()=>void)|null;start:()=>void;stop:()=>void};
+type Win=Window&{SpeechRecognition?:new()=>Rec;webkitSpeechRecognition?:new()=>Rec};
+const STORE="voithreal-v3";
+const day=()=>new Date().toDateString();
+const starter:Task[]=["Wake up and make your bed","Brush your teeth","Drink a glass of water","Take a shower","Have breakfast"].map((title,i)=>({id:String(i),title,time:["6:45 AM","7:00 AM","7:10 AM","7:30 AM","8:00 AM"][i],category:["Morning","Self care","Wellness","Self care","Nutrition"][i],done:false,date:day()}));
+const speak=(s:string)=>{if(!("speechSynthesis"in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(s);u.rate=.96;u.pitch=1.02;window.speechSynthesis.speak(u)};
+export default function HomePage(){
+ const [screen,S]=useState("landing"),[email,E]=useState(""),[password,P]=useState(""),[name,N]=useState(""),[error,Er]=useState(""),[notice,No]=useState("");
+ const [user,U]=useState<{name:string;email:string}|null>(null),[tasks,T]=useState<Task[]>(starter),[tab,B]=useState("today");
+ const [listening,L]=useState(false),[thinking,H]=useState(false),[speaking,Sp]=useState(false),[muted,M]=useState(false),[voice,V]=useState("Ready when you are"),[reminders,R]=useState(false);
+ const [modal,Q]=useState(false),[title,Ti]=useState(""),[time,Ti2]=useState("9:00 AM"),[category,C]=useState("Personal"),[now,Now]=useState(new Date());
+ const rec=useRef<Rec|null>(null),timer=useRef<number|null>(null),last=useRef("");
+ const today=day(),todayTasks=tasks.filter(t=>t.date===today),done=todayTasks.filter(t=>t.done).length,progress=todayTasks.length?Math.round(done/todayTasks.length*100):0,next=todayTasks.find(t=>!t.done);
+ const dateLabel=useMemo(()=>now.toLocaleDateString("en-NG",{weekday:"long",month:"long",day:"numeric"}),[now]);
+ useEffect(()=>{try{const d=JSON.parse(localStorage.getItem(STORE)||"{}");if(d.user){U(d.user);S("app")}if(Array.isArray(d.tasks))T(d.tasks);if(typeof d.muted==="boolean")M(d.muted)}catch{}const id=window.setInterval(()=>Now(new Date()),30000);return()=>window.clearInterval(id)},[]);
+ useEffect(()=>{localStorage.setItem(STORE,JSON.stringify({user,tasks,muted}))},[user,tasks,muted]);
+ useEffect(()=>()=>{if(timer.current)clearInterval(timer.current);rec.current?.stop();window.speechSynthesis?.cancel()},[]);
+ const say=(s:string)=>{V(s);last.current=s;if(!muted){Sp(true);speak(s);window.setTimeout(()=>Sp(false),Math.max(1800,s.length*50))}};
+ const login=()=>{Er("");if(!email.includes("@")){Er("Enter a valid email address.");return}if(password.length<4){Er("Use at least four characters for this preview account.");return}U({name:name.trim()||email.split("@")[0],email});S("app");B("today");window.setTimeout(()=>say("Welcome. I'm glad you're here. Let's take today one step at a time."),300)};
+ const signout=()=>{U(null);S("landing");P("");window.speechSynthesis?.cancel()};
+ const add=(t:string,tm="Anytime",cat="Personal")=>{if(!t.trim())return;T(v=>[...v,{id:crypto.randomUUID(),title:t.trim(),time:tm,category:cat,done:false,date:today}]);Ti("");Q(false);say("I've added that to your day.")};
+ const finish=()=>T(v=>{const x=v.find(t=>t.date===today&&!t.done);return x?v.map(t=>t.id===x.id?{...t,done:true}:t):v});
+ const respond=(raw:string)=>{const q=raw.toLowerCase();let a="I'm here with you. Tell me a little more, and we'll work through it together.";
+ if(/hello|hi |hey|good morning/.test(q))a="Hey. I'm glad you're here. How are you feeling today?";
+ else if(/what.*next|next task|what should i do/.test(q))a=next?"Your next step is "+next.title+". It is scheduled for "+next.time+".":"You're all caught up. Take a moment to enjoy that.";
+ else if(/i did|finished|completed/.test(q)){finish();a="Nice work. I've marked your next task as complete."}
+ else if(/add|remind me|remember to/.test(q)){const m=q.match(/(?:add|remind me to|remember to)\s+(.+)/);if(m){add(m[1]);a="I've added that to your day."}else a="Say, remind me to, followed by the task."}
+ else if(/brush|teeth/.test(q))a="A small win first. Go brush your teeth. I'll be right here.";
+ else if(/bath|shower/.test(q))a="A fresh start sounds good. Go take your shower, then come back.";
+ else if(/eat|food|hungry|breakfast|lunch|dinner/.test(q))a="Let's get you fed. Please find something nourishing to eat.";
+ else if(/clean|chore|room|laundry/.test(q))a="Pick one small area and give it five minutes. That's enough to begin.";
+ else if(/sad|lonely|tired|stress|overwhelm/.test(q))a="I'm listening. You don't have to fix everything right now. What's weighing on you most?";
+ else if(/thank/.test(q))a="Always. You're doing better by showing up and taking the next step.";
+ else if(/time|date/.test(q))a="It's "+now.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})+" on "+dateLabel+".";
+ H(false);say(a)};
+ const listen=()=>{const w=window as Win,Speech=w.SpeechRecognition||w.webkitSpeechRecognition;if(!Speech){No("Voice input needs a supported browser. Open in Chrome and allow microphone access.");return}rec.current?.stop();const r=new Speech();r.lang="en-NG";r.interimResults=false;r.continuous=false;r.onresult=e=>{const x=e.results[e.results.length-1];if(x?.isFinal){H(true);V("Thinking with you");respond(x[0].transcript)}};r.onerror=()=>{L(false);V("I didn't catch that. Try once more.")};r.onend=()=>L(false);rec.current=r;try{r.start();L(true);V("Listening carefully");No("")}catch{L(false);No("Microphone is busy. Try again.")}};
+ const enable=async()=>{if(!("Notification"in window)){No("Notifications are not supported in this browser.");return}const p=await Notification.requestPermission();if(p!=="granted"){No("Allow notifications in your browser settings.");return}R(true);No("Gentle reminders are enabled while VOITHREAL is open.");if(timer.current)clearInterval(timer.current);const sent=new Set<string>();timer.current=window.setInterval(()=>{const d=new Date(),label=d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}).toLowerCase();tasks.filter(t=>t.date===d.toDateString()&&!t.done&&t.time.toLowerCase()===label&&!sent.has(t.id)).forEach(t=>{sent.add(t.id);new Notification("VOITHREAL",{body:t.title});if(!muted)speak("A gentle reminder. It's time to "+t.title)})},15000)};
+ const auth=(kind:string)=><div className="auth-stage"><div className="auth-art"><div className="big-orb"><Waves size={40}/></div><p className="eyebrow">A LITTLE MORE CARE, EVERY DAY</p><h2>Good things begin<br/>with showing up.</h2><p>A quiet companion for the everyday things that make a life.</p></div><div className="auth-card"><button className="back" onClick={()=>S("landing")}>← Back to home</button><div className="brand"><i><Waves size={18}/></i> VOITHREAL</div><h1>{kind==="login"?"Welcome back":kind==="signup"?"Let's get started":"Reset your password"}</h1><p className="muted">{kind==="login"?"Your companion is right where you left off.":"Create your space. Your day starts here."}</p>{kind==="signup"&&<label>Your name<input value={name} onChange={e=>N(e.target.value)} placeholder="How should we call you?"/></label>}<label>Email address<input type="email" value={email} onChange={e=>E(e.target.value)} placeholder="you@example.com"/></label>{kind!=="reset"&&<label>Password<input type="password" value={password} onChange={e=>P(e.target.value)} placeholder="Enter any password"/></label>}{kind==="login"&&<div className="forgot"><span>Any email and password works in preview</span><button onClick={()=>{Er("");S("reset")}}>Forgot password?</button></div>}{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}<button className="primary full" onClick={()=>{if(kind==="reset"){No("Password reset email will be enabled when email delivery is connected.");return}login()}}>{kind==="login"?"Log in":kind==="signup"?"Create account":"Send reset instructions"} <ArrowRight size={16}/></button><p className="switch">{kind==="login"?"New to VOITHREAL?":"Already have an account?"} <button onClick={()=>{Er("");No("");S(kind==="login"?"signup":"login")}}>{kind==="login"?"Create an account":"Log in"}</button></p><div className="privacy"><ShieldCheck size={14}/> Your personal space stays yours.</div></div></div>;
+ if(screen!=="app")return <main className="site"><header className="nav"><a className="brand" onClick={()=>S("landing")}><i><Waves size={19}/></i> VOITHREAL</a><nav><a href="#how">How it works</a><a href="#care">Built around care</a></nav><div><button className="text-btn" onClick={()=>{Er("");S("login")}}>Log in</button><button className="primary small" onClick={()=>{Er("");S("signup")}}>Get started <ArrowRight size={14}/></button></div></header>{screen==="login"||screen==="signup"||screen==="reset"?auth(screen):<><section className="hero"><div><p className="eyebrow"><i/> A MORE HUMAN KIND OF INTELLIGENCE</p><h1>Someone in your corner.<br/><em>Every day.</em></h1><p className="hero-p">A voice-first companion that helps you look after yourself, keep your rhythm, and make room for what matters.</p><button className="primary" onClick={()=>S("signup")}>Meet your companion <ArrowRight size={17}/></button><button className="text-btn hero-login" onClick={()=>S("login")}>I already have an account</button><div className="proof"><span><ShieldCheck size={15}/> Private by design</span><span><Waves size={15}/> Voice-first, always</span></div></div><div className="hero-visual"><div className="halo"/><div className="halo two"/><div className="hero-orb"><Waves size={48}/></div><div className="float f1"><Heart size={16}/><span><b>A little care goes a long way</b><small>One step at a time</small></span></div><div className="float f2"><Clock3 size={16}/><span><b>Your day, in rhythm</b><small>Gentle reminders · Daily support</small></span></div></div></section><section className="features" id="how"><div><b>01</b><strong>Speak naturally</strong><small>No typing. Just talk.</small></div><div><b>02</b><strong>Build your rhythm</strong><small>Routines that fit real life.</small></div><div><b>03</b><strong>Feel supported</strong><small>Care without the pressure.</small></div></section><section className="care" id="care"><p className="eyebrow">DESIGNED FOR REAL LIFE</p><h2>Not another app asking for your attention.</h2><p>VOITHREAL is here to give some of it back. A calmer way to remember, reset, and keep showing up for yourself.</p></section><footer>© 2026 VOITHREAL <span>BUILT AROUND CARE</span></footer></>}</main>;
+ return <main className="app"><aside className="rail"><div className="rail-logo"><Waves size={21}/></div><button className={tab==="today"?"active":""} onClick={()=>B("today")} aria-label="Today"><Home size={19}/></button><button className={tab==="routines"?"active":""} onClick={()=>B("routines")} aria-label="Routines"><Check size={19}/></button><button className={tab==="activity"?"active":""} onClick={()=>B("activity")} aria-label="Activity"><Activity size={19}/></button><div className="grow"/><button className={tab==="settings"?"active":""} onClick={()=>B("settings")} aria-label="Settings"><Settings size={19}/></button><button onClick={signout} aria-label="Sign out"><LogOut size={18}/></button><div className="avatar">{(user?.name||"V")[0].toUpperCase()}</div></aside><section className="app-main"><header className="app-nav"><div className="brand"><i><Waves size={17}/></i> VOITHREAL <small>PERSONAL COMPANION</small></div><div className="nav-right"><span className="live"><i/> YOUR SPACE</span><button onClick={enable} aria-label="Notifications"><Bell size={18}/></button><button onClick={()=>M(v=>!v)} aria-label="Toggle voice">{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="profile" onClick={()=>B("settings")}><span className="avatar tiny">{(user?.name||"V")[0].toUpperCase()}</span>{user?.name}<ChevronDown size={13}/></button></div></header>
+ {tab==="settings"?<section className="content"><p className="eyebrow">YOUR SPACE</p><h1>Settings</h1><p className="sub">Make VOITHREAL feel right for you.</p><div className="settings"><article><UserRound/><h3>Your profile</h3><p>{user?.name}</p><small>{user?.email}</small></article><article><Volume2/><h3>Voice responses</h3><p>Spoken responses from your companion.</p><button onClick={()=>M(v=>!v)}>{muted?"Voice muted":"Voice on"}</button></article><article><Bell/><h3>Gentle reminders</h3><p>Browser notifications for your routine.</p><button onClick={enable}>{reminders?"Enabled":"Enable reminders"}</button></article><article><ShieldCheck/><h3>Privacy</h3><p>Your preview profile and routines are stored in this browser.</p></article></div><button className="logout" onClick={signout}> <LogOut size={15}/> Sign out</button></section>:<section className="content"><div className="heading"><div><p className="eyebrow">{dateLabel.toUpperCase()}</p><h1>{tab==="today"?"Good "+(now.getHours()<12?"morning":now.getHours()<17?"afternoon":"evening")+", "+(user?.name?.split(" ")[0]||"there")+".":tab==="routines"?"Your routines":"Your activity"}</h1><p className="sub">{tab==="today"?"Let's take today one step at a time.":tab==="routines"?"A little structure makes room for a lot.":"Every small step counts."}</p></div><div className="clock"><Sun size={15}/>{now.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}</div></div>{tab==="activity"?<div className="activity"><div className="activity-top"><Activity/><div><h2>Your consistency</h2><p>Today's completed actions</p></div><b>{progress}%</b></div><div className="bar"><i style={{width:progress+"%"}}/></div><div className="stats"><div><b>{done}</b><small>Completed</small></div><div><b>{todayTasks.length-done}</b><small>Remaining</small></div><div><b>{todayTasks.length}</b><small>Total today</small></div></div></div>:<div className="grid"><div className="left"><section className="voice-card"><div className="voice-head"><p className="eyebrow"><i/> YOUR COMPANION</p><small>HERE WITH YOU</small></div><div className={"orb-wrap "+(listening?"listen ":"")+(thinking?"think ":"")+(speaking?"talk":"")}><div className="ring"/><div className="ring second"/><div className="orb"><Waves size={39}/></div></div><div className="voice-state">{listening?"Listening carefully":thinking?"Thinking with you":speaking?"Speaking with you":voice}</div><div className="voice-actions"><button className={listening?"mic recording":"mic"} onClick={listening?()=>rec.current?.stop():listen} aria-label="Speak">{listening?<MicOff size={23}/>:<Mic size={23}/>}</button><span>{listening?"TAP TO FINISH":"TAP TO SPEAK"}</span><button className="replay" onClick={()=>say(last.current||"I'm here whenever you need me.")} aria-label="Repeat response"><Volume2 size={17}/></button></div><p className="voice-foot"><ShieldCheck size={13}/> Your words are heard, not displayed.</p></section><section className="routine-card"><div className="card-head"><div><p className="eyebrow">{tab==="routines"?"YOUR PERSONAL PLAN":"A LITTLE STRUCTURE"}</p><h2>{tab==="routines"?"All routines":"Your daily rhythm"}</h2></div><button className="add" onClick={()=>Q(true)}>+ Add task</button></div><div className="progress"><div><small>Today's progress</small><b>{done}<span> / {todayTasks.length} completed</span></b></div><div className="bar"><i style={{width:progress+"%"}}/></div><strong>{progress}%</strong></div><div className="tasks">{todayTasks.map(t=><div className={t.done?"task done":"task"} key={t.id}><button className="check" onClick={()=>T(v=>v.map(x=>x.id===t.id?{...x,done:!x.done}:x))} aria-label="Toggle task">{t.done&&<Check size={13}/>}</button><div className="task-name"><b>{t.title}</b><small>{t.category}</small></div><span className="task-time"><Clock3 size={12}/>{t.time}</span><button className="delete" onClick={()=>T(v=>v.filter(x=>x.id!==t.id))} aria-label="Delete task"><Trash2 size={13}/></button></div>)}{!todayTasks.length&&<div className="empty">Your day is open. Add a task to begin.</div>}</div></section></div><aside className="right"><section className="next"><p className="side-label"><Clock3 size={15}/> UP NEXT</p><h3>{next?next.title:"You're all caught up."}</h3><p>{next?"One small step. No rush, just begin when you're ready.":"You've made space for the rest of your day. Take a breath."}</p><b>{next?next.time:"ALL DONE"}</b>{next&&<button onClick={()=>{T(v=>v.map(x=>x.id===next.id?{...x,done:true}:x));say("Well done. I've marked that as complete.")}}>Mark as complete <Check size={14}/></button>}</section><section className="gentle"><Heart size={17}/><p>Taking care of yourself is not falling behind. It's part of moving forward.</p><small>A GENTLE REMINDER</small></section><section className="remind"><p className="side-label"><Bell size={15}/> GENTLE REMINDERS</p><p>Let your browser give you a nudge when it's time for the next thing.</p><button onClick={enable}>{reminders?<Check size={14}/>:<Bell size={14}/>} {reminders?"Reminders enabled":"Enable reminders"}</button><small>Available while this app is open.</small></section></aside></div>}{notice&&<div className="notice">{notice}<button onClick={()=>No("")}><X size={13}/></button></div>}</section>}<footer className="app-footer">VOITHREAL © 2026 <span>BUILT AROUND CARE</span></footer></section>{modal&&<div className="backdrop" onClick={()=>Q(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h2>Add a task</h2><button onClick={()=>Q(false)}><X size={17}/></button></div><label>What needs doing?<input value={title} onChange={e=>Ti(e.target.value)} placeholder="e.g. Tidy my room"/></label><div className="fields"><label>Time<input value={time} onChange={e=>Ti2(e.target.value)}/></label><label>Category<select value={category} onChange={e=>C(e.target.value)}>{["Personal","Self care","Wellness","Nutrition","Work","Study","Home"].map(x=><option key={x}>{x}</option>)}</select></label></div><button className="primary full" onClick={()=>add(title,time,category)}>Add to my day <ArrowRight size={15}/></button></div></div>}</main>
 }
