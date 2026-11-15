@@ -24,19 +24,20 @@ export default function HomePage(){
  const signout=()=>{U(null);S("landing");P("");window.speechSynthesis?.cancel()};
  const add=(t:string,tm="Anytime",cat="Personal")=>{if(!t.trim())return;T(v=>[...v,{id:crypto.randomUUID(),title:t.trim(),time:tm,category:cat,done:false,date:today}]);Ti("");Q(false);say("I've added that to your day.")};
  const finish=()=>T(v=>{const x=v.find(t=>t.date===today&&!t.done);return x?v.map(t=>t.id===x.id?{...t,done:true}:t):v});
- const respond=(raw:string)=>{const q=raw.toLowerCase();let a="I'm here with you. Tell me a little more, and we'll work through it together.";
- if(/hello|hi |hey|good morning/.test(q))a="Hey. I'm glad you're here. How are you feeling today?";
- else if(/what.*next|next task|what should i do/.test(q))a=next?"Your next step is "+next.title+". It is scheduled for "+next.time+".":"You're all caught up. Take a moment to enjoy that.";
- else if(/i did|finished|completed/.test(q)){finish();a="Nice work. I've marked your next task as complete."}
- else if(/add|remind me|remember to/.test(q)){const m=q.match(/(?:add|remind me to|remember to)\s+(.+)/);if(m){add(m[1]);a="I've added that to your day."}else a="Say, remind me to, followed by the task."}
- else if(/brush|teeth/.test(q))a="A small win first. Go brush your teeth. I'll be right here.";
- else if(/bath|shower/.test(q))a="A fresh start sounds good. Go take your shower, then come back.";
- else if(/eat|food|hungry|breakfast|lunch|dinner/.test(q))a="Let's get you fed. Please find something nourishing to eat.";
- else if(/clean|chore|room|laundry/.test(q))a="Pick one small area and give it five minutes. That's enough to begin.";
- else if(/sad|lonely|tired|stress|overwhelm/.test(q))a="I'm listening. You don't have to fix everything right now. What's weighing on you most?";
- else if(/thank/.test(q))a="Always. You're doing better by showing up and taking the next step.";
- else if(/time|date/.test(q))a="It's "+now.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})+" on "+dateLabel+".";
- H(false);say(a)};
+ const history=useRef<{role:"user"|"assistant";content:string}[]>([]);
+ const respond=async(raw:string)=>{
+  const q=raw.toLowerCase();H(true);V("Thinking with you");
+  if(/(i did|finished|completed)/.test(q))finish();
+  const addMatch=q.match(/(?:add|remind me to|remember to)\\s+(.+)/);
+  if(addMatch)add(addMatch[1]);
+  const context="Today's routines: "+tasks.filter(t=>t.date===today).map(t=>t.title+" ("+t.time+", "+(t.done?"completed":"not completed")+")").join("; ");
+  try{
+   const res=await fetch("/api/companion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({utterance:raw,history:history.current,context})});
+   const data=await res.json();if(!res.ok)throw new Error(data.error||"The companion is temporarily unavailable.");
+   history.current=[...history.current,{role:"user",content:raw},{role:"assistant",content:data.reply}].slice(-8);
+   H(false);say(data.reply);
+  }catch{H(false);say("I'm having trouble connecting right now. Please try again in a moment.");}
+ };
  const listen=()=>{const w=window as Win,Speech=w.SpeechRecognition||w.webkitSpeechRecognition;if(!Speech){No("Voice input needs a supported browser. Open in Chrome and allow microphone access.");return}rec.current?.stop();const r=new Speech();r.lang="en-NG";r.interimResults=false;r.continuous=false;r.onresult=e=>{const x=e.results[e.results.length-1];if(x?.isFinal){H(true);V("Thinking with you");respond(x[0].transcript)}};r.onerror=()=>{L(false);V("I didn't catch that. Try once more.")};r.onend=()=>L(false);rec.current=r;try{r.start();L(true);V("Listening carefully");No("")}catch{L(false);No("Microphone is busy. Try again.")}};
  const enable=async()=>{if(!("Notification"in window)){No("Notifications are not supported in this browser.");return}const p=await Notification.requestPermission();if(p!=="granted"){No("Allow notifications in your browser settings.");return}R(true);No("Gentle reminders are enabled while VOITHREAL is open.");if(timer.current)clearInterval(timer.current);const sent=new Set<string>();timer.current=window.setInterval(()=>{const d=new Date(),label=d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}).toLowerCase();tasks.filter(t=>t.date===d.toDateString()&&!t.done&&t.time.toLowerCase()===label&&!sent.has(t.id)).forEach(t=>{sent.add(t.id);new Notification("VOITHREAL",{body:t.title});if(!muted)speak("A gentle reminder. It's time to "+t.title)})},15000)};
  const auth=(kind:string)=><div className="auth-stage"><div className="auth-art"><div className="big-orb"><Waves size={40}/></div><p className="eyebrow">A LITTLE MORE CARE, EVERY DAY</p><h2>Good things begin<br/>with showing up.</h2><p>A quiet companion for the everyday things that make a life.</p></div><div className="auth-card"><button className="back" onClick={()=>S("landing")}>← Back to home</button><div className="brand"><i><Waves size={18}/></i> VOITHREAL</div><h1>{kind==="login"?"Welcome back":kind==="signup"?"Let's get started":"Reset your password"}</h1><p className="muted">{kind==="login"?"Your companion is right where you left off.":"Create your space. Your day starts here."}</p>{kind==="signup"&&<label>Your name<input value={name} onChange={e=>N(e.target.value)} placeholder="How should we call you?"/></label>}<label>Email address<input type="email" value={email} onChange={e=>E(e.target.value)} placeholder="you@example.com"/></label>{kind!=="reset"&&<label>Password<input type="password" value={password} onChange={e=>P(e.target.value)} placeholder="Enter any password"/></label>}{kind==="login"&&<div className="forgot"><span>Any email and password works in preview</span><button onClick={()=>{Er("");S("reset")}}>Forgot password?</button></div>}{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}<button className="primary full" onClick={()=>{if(kind==="reset"){No("Password reset email will be enabled when email delivery is connected.");return}login()}}>{kind==="login"?"Log in":kind==="signup"?"Create account":"Send reset instructions"} <ArrowRight size={16}/></button><p className="switch">{kind==="login"?"New to VOITHREAL?":"Already have an account?"} <button onClick={()=>{Er("");No("");S(kind==="login"?"signup":"login")}}>{kind==="login"?"Create an account":"Log in"}</button></p><div className="privacy"><ShieldCheck size={14}/> Your personal space stays yours.</div></div></div>;
