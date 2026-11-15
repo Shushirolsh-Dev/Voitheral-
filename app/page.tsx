@@ -35,7 +35,7 @@ export default function HomePage(){
   try{
    const res=await fetch("/api/companion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({utterance:raw,history:history.current,context})});
    const data=await res.json();if(!res.ok)throw new Error(data.error||"The companion is temporarily unavailable.");
-   history.current=[...history.current,{role:"user",content:raw},{role:"assistant",content:data.reply}].slice(-8);
+   history.current=[...history.current,{role:"user" as const,content:raw},{role:"assistant" as const,content:data.reply}].slice(-8);
    H(false);say(data.reply);
   }catch{H(false);say("I'm having trouble connecting right now. Please try again in a moment.");}
  };
