@@ -77,3 +77,10 @@ body{background:#050609;color:#f4f5f7}
 .notice{background:#f4f5f7;color:#080a0f}.notice button{color:#080a0f}
 .galaxy:before,.galaxy:after{display:none!important}
 @media(max-width:700px){.landing-space{height:780px;min-height:780px}.hero{min-height:690px}.hero-visual{height:320px}.features,.care{background:#080a0f}.features{border-color:#ffffff20}.features>div{border-color:#ffffff20}.app-nav{background:#080a0fe8}.content{color:#fff}.right{color:#fff}}
+
+/* Voice activity becomes a filled constellation, not an empty orbit. */
+.orb-wrap .galaxy-active{background:radial-gradient(circle at 50% 50%,#d9e0ed24 0%,#aebbd31d 27%,#7888a01a 49%,#0b0e15 76%,transparent 100%);}
+.orb-wrap .galaxy-active .galaxy-nebula{opacity:.48;filter:blur(34px);}
+.orb-wrap .galaxy-active .nebula-one{width:74%;height:78%;left:13%;top:11%;background:#c4cede;}
+.orb-wrap .galaxy-active .nebula-two{width:55%;height:60%;right:20%;bottom:18%;background:#8d9bb5;opacity:.25;}
+.orb-wrap .galaxy-active .star{opacity:1;}
