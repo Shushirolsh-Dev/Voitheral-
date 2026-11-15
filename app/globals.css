@@ -84,3 +84,7 @@ body{background:#050609;color:#f4f5f7}
 .orb-wrap .galaxy-active .nebula-one{width:74%;height:78%;left:13%;top:11%;background:#c4cede;}
 .orb-wrap .galaxy-active .nebula-two{width:55%;height:60%;right:20%;bottom:18%;background:#8d9bb5;opacity:.25;}
 .orb-wrap .galaxy-active .star{opacity:1;}
+
+/* Compact landing navigation actions. */
+.nav>div:last-child{gap:14px}.nav .primary.small{padding:8px 11px;font-size:10px;gap:7px;min-height:32px}.nav .primary.small svg{width:12px;height:12px}.nav .text-btn{padding:8px;font-size:11px}
+@media(max-width:700px){.nav>div:last-child{gap:8px}.nav .primary.small{padding:7px 9px;font-size:9px;min-height:29px;gap:5px}.nav .primary.small svg{width:11px;height:11px}}
