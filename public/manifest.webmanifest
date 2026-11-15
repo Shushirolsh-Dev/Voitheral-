@@ -1,0 +1,10 @@
+{
+  "name": "VOITHREAL — Your Personal Companion",
+  "short_name": "VOITHREAL",
+  "description": "A warm, voice-first personal companion.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a1017",
+  "theme_color": "#0a1017",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
