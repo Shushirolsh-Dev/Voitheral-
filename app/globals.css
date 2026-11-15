@@ -88,3 +88,29 @@ body{background:#050609;color:#f4f5f7}
 /* Compact landing navigation actions. */
 .nav>div:last-child{gap:14px}.nav .primary.small{padding:8px 11px;font-size:10px;gap:7px;min-height:32px}.nav .primary.small svg{width:12px;height:12px}.nav .text-btn{padding:8px;font-size:11px}
 @media(max-width:700px){.nav>div:last-child{gap:8px}.nav .primary.small{padding:7px 9px;font-size:9px;min-height:29px;gap:5px}.nav .primary.small svg{width:11px;height:11px}}
+
+
+/* VOITHREAL visual refinement: true black, soft grey typography, neutral stars. */
+html,body{background:#000!important;color:#c7c7c7!important}
+body,.site,.app,.app:before,.landing-space,.landing-space:after{background:#000!important}
+.site,.app,.content,.auth-stage,.auth-card,.voice-card,.routine-card,.next,.gentle,.remind,.settings article,.activity,.features,.care,.app-nav,.nav,.rail,.modal,.float{color:#c7c7c7!important}
+.landing-space{background:#000!important}
+.landing-space:after{background:linear-gradient(180deg,#0000 0%,#0000 70%,#000 100%)!important}
+.app:before{background:#000!important}
+.app:after{opacity:.35;background-image:radial-gradient(1px 1px at 12% 18%,#d8d8d8 50%,transparent 100%),radial-gradient(1px 1px at 73% 31%,#bdbdbd 50%,transparent 100%),radial-gradient(1px 1px at 88% 78%,#e4e4e4 50%,transparent 100%),radial-gradient(1px 1px at 42% 69%,#c8c8c8 50%,transparent 100%)!important}
+.landing-space .galaxy,.hero-galaxy,.hero-galaxy .galaxy,.orb-wrap .galaxy{background:transparent!important}
+.galaxy-nebula,.nebula-one,.nebula-two,.landing-space .nebula-one,.landing-space .nebula-two{background:#bdbdbd!important;opacity:.09!important;filter:blur(75px)!important}
+.galaxy-core{background:radial-gradient(circle at 40% 35%,#e5e5e5 0%,#bcbcbc 12%,#777 28%,#393939 50%,#101010 74%)!important;box-shadow:0 0 22px #d0d0d02b,0 0 70px #bdbdbd18!important}
+.star,.star-bright{background:#d8d8d8!important;box-shadow:0 0 5px #d8d8d866,0 0 12px #bdbdbd33!important}
+.star-bright{background:#f0f0f0!important;box-shadow:0 0 7px #f0f0f0aa,0 0 15px #d0d0d066!important}
+.orb-wrap .galaxy-active{background:radial-gradient(circle at 50% 50%,#d8d8d814 0%,#bdbdbd0d 35%,transparent 75%)!important}
+.orb-wrap .galaxy-active .star{background:#e6e6e6!important;box-shadow:0 0 7px #e6e6e6aa,0 0 16px #cfcfcf55!important}
+body :is(h1,h2,h3,h4,h5,h6,p,span,small,strong,b,label,a,button,li,div,summary,blockquote,em){color:#c7c7c7}
+body :is(.primary,.mic,.add,.next>button,.remind>button,.settings article button){color:#292929!important}
+body :is(.brand,.brand i,.avatar){color:#c7c7c7!important}
+body :is(.muted,.sub,.eyebrow,.side-label,.voice-foot,.voice-head small,.task-name small,.task-time,.progress small,.app-footer,.live){color:#a8a8a8!important}
+body :is(input,textarea,select){color:#d0d0d0!important;background:#080808!important}
+body :is(input,textarea,select)::placeholder{color:#777!important}
+.features,.care,.routine-card,.next,.gentle,.remind,.settings article,.activity,.voice-card,.auth-card,.modal{background:#080808!important;border-color:#242424!important}
+.app-nav,.nav,.rail{background:#050505ee!important;border-color:#242424!important}
+.float{background:#090909dd!important;border-color:#292929!important}
